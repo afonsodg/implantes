@@ -215,7 +215,7 @@
   </div>
 </dialog>
 
-<script src="vendor/zxing-reader.js"></script>
+<script src="zxing-reader.js"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -426,7 +426,7 @@ const OPCOES = { formats: ["DataMatrix", "Code128", "QRCode"], tryHarder: true, 
 let leitorPronto;
 function prepararLeitor() {
   leitorPronto ??= ZXingWASM.prepareZXingModule({
-    overrides: { locateFile: (f, prefixo) => f.endsWith(".wasm") ? "vendor/zxing_reader.wasm" : prefixo + f },
+    overrides: { locateFile: (f, prefixo) => f.endsWith(".wasm") ? "zxing_reader.wasm" : prefixo + f },
     fireImmediately: true,
   });
   return leitorPronto;
@@ -456,7 +456,7 @@ async function ligarCamara() {
   const faixa = fluxo.getVideoTracks()[0], cap = faixa.getCapabilities?.() || {};
   $("lanterna").hidden = !cap.torch;
   if (cap.focusMode?.includes("continuous")) faixa.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
-  prepararLeitor().catch(() => mostrarErro("O leitor não carregou. Confirma que a pasta «vendor» está no repositório."));
+  prepararLeitor().catch(() => mostrarErro("O leitor não carregou. Confirma que zxing-reader.js e zxing_reader.wasm estão no repositório, ao lado do index.html."));
   ciclo();
 }
 function pararCamara() {
