@@ -176,6 +176,14 @@
     <div class="campo"><span class="rotulo">GTIN</span><span class="valor" id="vGtin"></span></div>
     <div class="campo"><span class="rotulo">Lote</span><span class="valor" id="vLote"></span></div>
     <div class="campo"><span class="rotulo">Validade</span><span class="valor" id="vValidade"></span></div>
+    <div class="campo">
+      <label for="tamanho">Tamanho (mm)</label>
+      <input id="tamanho" inputmode="decimal" autocomplete="off" placeholder="Ex: 14">
+    </div>
+    <div class="campo">
+      <label for="diametro">Diâmetro (mm)</label>
+      <input id="diametro" inputmode="decimal" autocomplete="off" placeholder="Ex: 4,0">
+    </div>
     <div class="campo" id="lFabrico"><span class="rotulo">Fabrico</span><span class="valor" id="vFabrico"></span></div>
     <div class="campo" id="lSerie"><span class="rotulo">Nº de série</span><span class="valor" id="vSerie"></span></div>
     <div class="campo" id="lOutros"><span class="rotulo">Outros</span><span class="valor" id="vOutros"></span></div>
@@ -315,6 +323,7 @@ function gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catc
 
 let def = ler("implantes.def", { url: "", chave: "", auto: false });
 let sessao = ler("implantes.sessao", { nsc: "", data: hoje(), itens: [] });
+let catalogo = ler("implantes.catalogo", {});   // medidas já escritas, por GTIN
 let pendente = null;     // leitura à espera de «Guardar»
 const dataPt = iso => iso ? iso.split("-").reverse().join("/") : "—";
 
@@ -350,12 +359,18 @@ function guardarLeitura(l) {
   if (!sessao.data) { mostrarErro("Preenche a data da cirurgia antes de guardar."); return false; }
   mostrarErro("");
   const item = { id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2),
-    nsc: sessao.nsc, data: sessao.data, gtin: l.gtin, lote: l.lote, validade: l.validade, fabrico: l.fabrico,
+    nsc: sessao.nsc, data: sessao.data, tamanho: l.tamanho || "", diametro: l.diametro || "", gtin: l.gtin, lote: l.lote, validade: l.validade, fabrico: l.fabrico,
     serie: l.serie, outros: l.outros, codigo: l.codigo, estado: "a-enviar", erro: "" };
   sessao.itens.unshift(item);
   gravar("implantes.sessao", sessao);
   enviarItem(item);
   return true;
+}
+
+function medidas(it) {
+  if (it.diametro && it.tamanho) return `Ø${it.diametro} × ${it.tamanho} mm`;
+  if (it.diametro) return `Ø${it.diametro} mm`;
+  return it.tamanho ? `${it.tamanho} mm` : "";
 }
 
 function desenharItens() {
@@ -367,7 +382,7 @@ function desenharItens() {
     const l1 = document.createElement("div"); l1.className = "l1"; l1.textContent = it.gtin || it.codigo;
     const l2 = document.createElement("div"); l2.className = "l2";
     l2.textContent = it.estado === "erro" ? it.erro
-      : [it.lote && "Lote " + it.lote, it.serie && "Série " + it.serie, it.validade && "Val. " + dataPt(it.validade)].filter(Boolean).join(", ");
+      : [medidas(it), it.lote && "Lote " + it.lote, it.serie && "Série " + it.serie, it.validade && "Val. " + dataPt(it.validade)].filter(Boolean).join(", ");
     corpo.append(l1, l2);
     let est;
     if (it.estado === "erro") { est = document.createElement("button"); est.textContent = "Reenviar"; est.onclick = () => enviarItem(it); }
@@ -395,13 +410,17 @@ function aoLer(texto) {
   mostrarErro("");
   const l = interpretar(texto);
   sinal();
-  if (def.auto && l.gtin && !l.avisos.length) { if (guardarLeitura(l)) return; }
+  // O código não traz as medidas: ficam lembradas neste telemóvel por GTIN, para não as repetires.
+  const conhecido = l.gtin && catalogo[l.gtin];
+  l.tamanho = conhecido ? conhecido.tamanho : ""; l.diametro = conhecido ? conhecido.diametro : "";
+  if (def.auto && conhecido && !l.avisos.length) { if (guardarLeitura(l)) return; }
   pendente = l;
   const av = $("avisos"); av.textContent = "";
   for (const a of l.avisos) { const p = document.createElement("p"); p.className = "aviso ambar"; p.textContent = a; av.append(p); }
   $("vGtin").textContent = l.gtin || "—";
   $("vLote").textContent = l.lote || "—";
   $("vValidade").textContent = dataPt(l.validade);
+  $("tamanho").value = l.tamanho; $("diametro").value = l.diametro;
   $("vFabrico").textContent = dataPt(l.fabrico); $("lFabrico").hidden = !l.fabrico;
   $("vSerie").textContent = l.serie; $("lSerie").hidden = !l.serie;
   $("vOutros").textContent = l.outros || l.codigo; $("lOutros").hidden = !(l.outros || !l.gtin);
@@ -410,7 +429,15 @@ function aoLer(texto) {
 }
 function fecharLido() { pendente = null; $("lido").hidden = true; }
 $("descartar").onclick = fecharLido;
-$("guardar").onclick = () => { if (pendente && guardarLeitura(pendente)) fecharLido(); };
+$("guardar").onclick = () => {
+  if (!pendente) return;
+  pendente.tamanho = $("tamanho").value.trim(); pendente.diametro = $("diametro").value.trim();
+  if (!guardarLeitura(pendente)) return;
+  if (pendente.gtin && (pendente.tamanho || pendente.diametro)) {
+    catalogo[pendente.gtin] = { tamanho: pendente.tamanho, diametro: pendente.diametro }; gravar("implantes.catalogo", catalogo);
+  }
+  fecharLido();
+};
 
 let audio;
 function sinal() {
