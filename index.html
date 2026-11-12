@@ -424,11 +424,13 @@ function sinal() {
 
 const OPCOES = { formats: ["DataMatrix", "Code128", "QRCode"], tryHarder: true, textMode: "Plain", maxNumberOfSymbols: 1 };
 let leitorPronto;
+const FALTA_LEITOR = "O leitor não carregou: falta o ficheiro zxing-reader.js no repositório, ao lado do index.html.";
 function prepararLeitor() {
-  leitorPronto ??= ZXingWASM.prepareZXingModule({
+  if (typeof ZXingWASM === "undefined") return Promise.reject(new Error(FALTA_LEITOR));
+  leitorPronto ??= Promise.resolve(ZXingWASM.prepareZXingModule({
     overrides: { locateFile: (f, prefixo) => f.endsWith(".wasm") ? "zxing_reader.wasm" : prefixo + f },
     fireImmediately: true,
-  });
+  })).catch(x => { leitorPronto = null; throw x; });
   return leitorPronto;
 }
 async function descodificar(imagem) {
@@ -456,7 +458,7 @@ async function ligarCamara() {
   const faixa = fluxo.getVideoTracks()[0], cap = faixa.getCapabilities?.() || {};
   $("lanterna").hidden = !cap.torch;
   if (cap.focusMode?.includes("continuous")) faixa.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
-  prepararLeitor().catch(() => mostrarErro("O leitor não carregou. Confirma que zxing-reader.js e zxing_reader.wasm estão no repositório, ao lado do index.html."));
+  prepararLeitor().catch(() => mostrarErro("O leitor não arrancou: confirma que zxing-reader.js e zxing_reader.wasm estão no repositório, ao lado do index.html."));
   ciclo();
 }
 function pararCamara() {
@@ -486,18 +488,38 @@ async function ciclo() {
 }
 
 $("foto").onclick = () => $("ficheiro").click();
+async function abrirImagem(f) {
+  try { return await createImageBitmap(f); } catch {}
+  return await new Promise((ok, ko) => {             // alternativa para formatos que o createImageBitmap recusa
+    const u = URL.createObjectURL(f), im = new Image();
+    im.onload = () => ok(im);
+    im.onerror = () => { URL.revokeObjectURL(u); ko(new Error("imagem")); };
+    im.src = u;
+  });
+}
 $("ficheiro").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
   mostrarErro("");
+  if (typeof ZXingWASM === "undefined") { mostrarErro(FALTA_LEITOR); return; }
+  let img;
+  try { img = await abrirImagem(f); }
+  catch { mostrarErro(`Não consegui abrir esta fotografia (${f.type || "formato desconhecido"}). Experimenta tirar outra.`); return; }
+  try { await prepararLeitor(); }
+  catch (x) { mostrarErro("O leitor não arrancou: confirma que zxing_reader.wasm está no repositório, ao lado do index.html. (" + (x.message || x) + ")"); return; }
   try {
-    const img = await createImageBitmap(f);
-    const esc = Math.min(1, 2600 / Math.max(img.width, img.height));
-    const c = document.createElement("canvas"); c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
-    const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
-    const t = await descodificar(x.getImageData(0, 0, c.width, c.height));
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    let t = "";
+    for (const max of [2400, 1200, 3600]) {          // várias escalas: códigos muito grandes ou muito pequenos
+      const esc = Math.min(1, max / Math.max(w, h));
+      const c = document.createElement("canvas"); c.width = Math.round(w * esc); c.height = Math.round(h * esc);
+      const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
+      t = await descodificar(x.getImageData(0, 0, c.width, c.height));
+      c.width = c.height = 0;
+      if (t || esc === 1) break;
+    }
     if (t) aoLer(t); else mostrarErro("Não encontrei nenhum código nesta fotografia. Aproxima mais e evita reflexos no plástico.");
-  } catch { mostrarErro("Não consegui abrir esta fotografia."); }
+  } catch (x) { mostrarErro("Erro ao ler a fotografia: " + (x.message || x)); }
 };
 
 $("manual").addEventListener("keydown", e => {
@@ -524,6 +546,7 @@ $("testar").onclick = async () => {
   catch (e) { msgDef(e.message === "Failed to fetch" || e.name === "TypeError" ? "Sem resposta. Confirma o endereço e que a aplicação Web está publicada para «Qualquer pessoa»." : e.message, "vermelho"); }
 };
 
+if (typeof ZXingWASM === "undefined") mostrarErro(FALTA_LEITOR);
 desenharItens();
 sessao.itens.filter(i => i.estado !== "guardado").forEach(enviarItem);
 </script>
