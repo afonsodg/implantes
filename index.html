@@ -156,6 +156,7 @@
       <div class="mira"></div>
       <p class="vazio">Liga a câmara e aponta ao código quadrado da embalagem.</p>
     </div>
+    <p class="aviso verde" id="instalada" hidden>Pronta a usar neste telemóvel. Preenche o NSC e lê o primeiro implante.</p>
     <p class="aviso vermelho" id="erroLeitura" hidden></p>
     <div class="botoes sem-linha">
       <button class="btn principal" id="camara">Ligar câmara</button>
@@ -208,6 +209,9 @@
   <div class="campo interruptor">
     <label for="auto">Guardar logo após a leitura</label>
     <input id="auto" type="checkbox">
+  </div>
+  <div class="botoes sem-linha" style="border-top:1px solid var(--linha)">
+    <button class="btn" id="copiar">Copiar ligação de instalação</button>
   </div>
   <div class="botoes">
     <button class="btn" id="testar">Testar ligação</button>
@@ -547,6 +551,28 @@ $("testar").onclick = async () => {
 };
 
 if (typeof ZXingWASM === "undefined") mostrarErro(FALTA_LEITOR);
+$("copiar").onclick = async () => {
+  lerDef();
+  if (!def.url || !def.chave) { msgDef("Preenche primeiro o endereço e a chave.", "vermelho"); return; }
+  const cfg = btoa(unescape(encodeURIComponent(JSON.stringify({ u: def.url, c: def.chave })))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const ligacao = location.origin + location.pathname + "#cfg=" + cfg;
+  try { await navigator.clipboard.writeText(ligacao); msgDef("Ligação copiada. Envia-a só a quem deve poder registar implantes.", "verde"); }
+  catch { prompt("Copia esta ligação:", ligacao); }
+};
+
+// Ligação de instalação: …/#cfg=… traz o endereço e a chave, guarda-os e limpa a barra de endereço.
+(function receberConfiguracao() {
+  const m = /[#&]cfg=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!m) return;
+  try {
+    const j = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")))));
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(j.u) || !j.c) throw 0;
+    def = { url: j.u, chave: String(j.c), auto: !!def.auto }; gravar("implantes.def", def);
+    mostrarErro(""); $("instalada").hidden = false;
+  } catch { mostrarErro("A ligação de instalação está incompleta. Pede uma nova a quem ta enviou."); }
+  history.replaceState(null, "", location.pathname + location.search);
+})();
+
 desenharItens();
 sessao.itens.filter(i => i.estado !== "guardado").forEach(enviarItem);
 </script>
