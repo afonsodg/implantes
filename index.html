@@ -161,6 +161,11 @@
   .medida > span { color: var(--suave); }
   .grupo > textarea { resize: vertical; min-height: 64px; }
   #dmOutro { margin-top: 8px; }
+  .aviso-versao {
+    width: 100%; min-height: 48px; padding: 10px 16px; border-radius: var(--raio); border: 1px solid var(--azul);
+    background: rgba(61,139,219,.15); color: var(--texto); font-weight: 600; text-align: left;
+  }
+  .versao { margin: 0; padding: 8px 16px 0; font-size: 13px; color: var(--suave); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -177,6 +182,7 @@
 </header>
 
 <main>
+  <button class="aviso-versao" id="novaVersao" type="button" hidden>Há uma versão nova da app. Toca para atualizar.</button>
   <section class="cartao">
     <h2>Cirurgia</h2>
     <div class="campo" id="campoNsc">
@@ -211,8 +217,9 @@
     </div>
   </section>
 
-  <section class="cartao" id="lido" hidden>
-    <h2>Implante lido</h2>
+  <section class="cartao" id="lido">
+    <h2>Implante</h2>
+    <p class="aviso" id="dicaLido">Lê o código da embalagem para preencher lote e validade, ou preenche à mão.</p>
     <div id="avisos"></div>
     <div class="grupo">
       <span class="rotulo" id="rDm">Dispositivo médico (DM)</span>
@@ -229,8 +236,8 @@
       <div class="medida"><input id="tamanho" inputmode="decimal" autocomplete="off" placeholder="Ex: 14"><span id="uTamanho">mm</span></div>
       <div class="fichas" id="fichasTamanho"></div>
     </div>
-    <div class="campo"><span class="rotulo">Lote</span><span class="valor" id="vLote"></span></div>
-    <div class="campo"><span class="rotulo">Validade</span><span class="valor" id="vValidade"></span></div>
+    <div class="campo"><label for="lote">Lote</label><input id="lote" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="—"></div>
+    <div class="campo"><label for="validade">Validade</label><input id="validade" inputmode="numeric" autocomplete="off" placeholder="dd/mm/aaaa"></div>
     <div class="campo"><span class="rotulo">GTIN</span><span class="valor" id="vGtin"></span></div>
     <div class="campo" id="lSerie"><span class="rotulo">Nº de série</span><span class="valor" id="vSerie"></span></div>
     <div class="campo" id="lFabrico"><span class="rotulo">Fabrico</span><span class="valor" id="vFabrico"></span></div>
@@ -240,7 +247,7 @@
       <textarea id="notas" rows="2" placeholder="Campo livre"></textarea>
     </div>
     <div class="botoes">
-      <button class="btn" id="descartar">Descartar</button>
+      <button class="btn" id="descartar">Limpar</button>
       <button class="btn principal" id="guardar">Guardar na folha</button>
     </div>
   </section>
@@ -290,11 +297,13 @@
     <button class="btn" id="testar">Testar ligação</button>
     <button class="btn principal" id="fecharDef">Guardar definições</button>
   </div>
+  <p class="versao" id="versao"></p>
 </dialog>
 
 <script src="zxing-reader.js"></script>
 <script>
 "use strict";
+const VERSAO = "2026-11-17.4";
 const $ = id => document.getElementById(id);
 const GS = "\x1d";
 
@@ -560,23 +569,44 @@ function aoLer(texto) {
   sinal();
   // O código não traz o DM nem as medidas: ficam lembrados neste telemóvel por GTIN.
   const conhecido = l.gtin && catalogo[l.gtin];
-  l.dm = conhecido?.dm || ""; l.tamanho = conhecido?.tamanho || ""; l.diametro = conhecido?.diametro || ""; l.notas = "";
+  // O que já tinhas escolhido à mão antes de ler o código mantém-se, a não ser que o GTIN já seja conhecido.
+  const dmAtual = dmEscolhido === OUTRO ? $("dmOutro").value.trim() : dmEscolhido;
+  l.dm = conhecido?.dm || dmAtual;
+  l.tamanho = conhecido?.tamanho || $("tamanho").value.trim(); l.diametro = conhecido?.diametro || $("diametro").value.trim();
+  l.notas = $("notas").value.trim();
   if (def.auto && conhecido?.dm && !l.avisos.length) { if (guardarLeitura(l)) return; }
   pendente = l;
   const av = $("avisos"); av.textContent = "";
   for (const a of l.avisos) { const p = document.createElement("p"); p.className = "aviso ambar"; p.textContent = a; av.append(p); }
   $("vGtin").textContent = l.gtin || "—";
-  $("vLote").textContent = l.lote || "—";
-  $("vValidade").textContent = dataPt(l.validade);
-  $("tamanho").value = l.tamanho; $("diametro").value = l.diametro; $("notas").value = "";
+  $("lote").value = l.lote || "";
+  $("validade").value = l.validade ? dataPt(l.validade) : "";
+  $("dicaLido").hidden = true;
+  $("tamanho").value = l.tamanho; $("diametro").value = l.diametro;
   escolherDm(l.dm);
   $("vFabrico").textContent = dataPt(l.fabrico); $("lFabrico").hidden = !l.fabrico;
   $("vSerie").textContent = l.serie; $("lSerie").hidden = !l.serie;
   $("vOutros").textContent = l.outros || l.codigo; $("lOutros").hidden = !(l.outros || !l.gtin);
-  $("lido").hidden = false;
   $("lido").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
-function fecharLido() { pendente = null; $("lido").hidden = true; mostrarErroLido(""); }
+function fecharLido() {
+  pendente = null; mostrarErroLido(""); $("avisos").textContent = ""; $("dicaLido").hidden = false;
+  for (const id of ["lote", "validade", "tamanho", "diametro", "notas", "dmOutro"]) $(id).value = "";
+  $("vGtin").textContent = "—";
+  for (const id of ["lFabrico", "lSerie", "lOutros"]) $(id).hidden = true;
+  escolherDm("");
+}
+function lerValidade(t) {          // dd/mm/aaaa (ou mm/aaaa) → AAAA-MM-DD; "" se vazio; null se inválida
+  t = t.trim(); if (!t) return "";
+  let m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/.exec(t), d, mes, a;
+  if (m) { d = +m[1]; mes = +m[2]; a = +m[3]; }
+  else if ((m = /^(\d{1,2})[\/.-](\d{2}|\d{4})$/.exec(t))) { mes = +m[1]; a = +m[2]; d = 0; }
+  else return null;
+  if (a < 100) a += 2000;
+  if (mes < 1 || mes > 12) return null;
+  const ultimo = new Date(a, mes, 0).getDate(); if (d === 0) d = ultimo; if (d < 1 || d > ultimo) return null;
+  return `${a}-${String(mes).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
 
 /* ---------- DM e medidas ---------- */
 
@@ -636,7 +666,10 @@ function desenharMedidas() {
 $("dmOutro").addEventListener("input", () => { mostrarErroLido(""); desenharMedidas(); });
 $("descartar").onclick = fecharLido;
 $("guardar").onclick = () => {
-  if (!pendente) return;
+  const validade = lerValidade($("validade").value);
+  if (validade === null) { mostrarErroLido("Validade inválida. Escreve como dd/mm/aaaa."); return; }
+  pendente ??= { codigo: "", gtin: "", lote: "", validade: "", fabrico: "", serie: "", outros: "" };
+  pendente.lote = $("lote").value.trim(); pendente.validade = validade;
   const dm = dmEscolhido === OUTRO ? $("dmOutro").value.trim() : dmEscolhido;
   if (!dm) { mostrarErroLido(dmEscolhido === OUTRO ? "Escreve qual é o dispositivo." : "Escolhe o dispositivo médico."); return; }
   pendente.dm = dm;
@@ -809,6 +842,22 @@ $("copiar").onclick = async () => {
   history.replaceState(null, "", location.pathname + location.search);
 })();
 
+/* ---------- Versão nova ----------
+   O GitHub Pages deixa o telemóvel guardar a página até 10 minutos. Isto pergunta ao servidor,
+   sem cache, se há outra versão, e oferece-se para recarregar. */
+$("versao").textContent = "Versão " + VERSAO;
+async function verVersao() {
+  try {
+    const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" });
+    const m = /const VERSAO = "([^"]+)"/.exec(await r.text());
+    $("novaVersao").hidden = !m || m[1] === VERSAO;
+  } catch {}
+}
+$("novaVersao").onclick = () => { location.replace(location.pathname + "?v=" + Date.now()); };
+verVersao();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) verVersao(); });
+
+fecharLido();
 desenharItens();
 sessao.itens.filter(i => i.estado !== "guardado").forEach(enviarItem);
 </script>
