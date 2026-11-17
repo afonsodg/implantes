@@ -30,7 +30,7 @@
     font: 17px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     padding-bottom: calc(32px + env(safe-area-inset-bottom));
   }
-  button, input { font: inherit; color: inherit; }
+  button, input, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
 
@@ -71,6 +71,7 @@
   .campo > input[type=date]::-webkit-date-and-time-value { text-align: right; }
   .campo > .valor { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; padding: 10px 0; font-variant-numeric: tabular-nums; }
   .campo.falta > label { color: var(--vermelho); }
+  .hoje { flex: none; min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--azul); background: none; color: var(--azul); font-size: 15px; font-weight: 600; }
 
   .visor { position: relative; background: #000; aspect-ratio: 4 / 3; display: grid; place-items: center; }
   .visor video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -114,6 +115,27 @@
     background: var(--cartao); color: var(--texto);
   }
   dialog::backdrop { background: rgba(0,0,0,.6); }
+  .data-botao {
+    flex: 1; min-width: 0; height: 50px; border: 0; background: none; text-align: right; padding: 0;
+    font-variant-numeric: tabular-nums; display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  }
+  .data-botao svg { width: 20px; height: 20px; flex: none; stroke: var(--suave); fill: none; stroke-width: 1.8; stroke-linecap: round; }
+
+  #cal { width: min(340px, calc(100vw - 32px)); padding: 0 0 12px; }
+  .cal-topo { display: flex; align-items: center; gap: 4px; padding: 10px 8px 6px 16px; }
+  .cal-topo h2 { flex: 1; padding: 0; border: 0; font-size: 17px; }
+  .cal-seta { width: 40px; height: 40px; border-radius: 10px; border: 0; background: none; display: grid; place-items: center; }
+  .cal-seta svg { width: 20px; height: 20px; stroke: var(--texto); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-grelha { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 10px; }
+  .cal-grelha .sem { text-align: center; font-size: 13px; color: var(--suave); padding: 4px 0 6px; }
+  .cal-dia {
+    aspect-ratio: 1; border: 0; border-radius: 50%; background: none; font-size: 16px;
+    font-variant-numeric: tabular-nums; display: grid; place-items: center;
+  }
+  .cal-dia.fora { color: #5c5c62; }
+  .cal-dia.hoje-dia { color: var(--azul); font-weight: 700; }
+  .cal-dia[aria-selected="true"] { background: var(--azul); color: #fff; font-weight: 700; }
+  .cal-rodape { display: flex; gap: 8px; padding: 10px 12px 0; }
   dialog h2 { margin: 0; padding: 14px 16px; font-size: 18px; border-bottom: 1px solid var(--linha); }
   dialog .campo > input { text-align: left; }
   dialog .campo { flex-wrap: wrap; padding-top: 10px; row-gap: 0; }
@@ -121,6 +143,24 @@
   dialog .interruptor { flex-wrap: nowrap; padding: 0 16px; }
   dialog .interruptor > label { width: auto; flex: 1; font-size: 17px; color: var(--texto); }
   dialog input[type=checkbox] { width: 24px; height: 24px; flex: none; accent-color: var(--azul); }
+  .grupo { padding: 12px 16px; border-bottom: 1px solid var(--linha); }
+  .grupo > .rotulo, .grupo > label { display: block; color: var(--suave); margin-bottom: 8px; }
+  .fichas { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ficha {
+    min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--linha);
+    background: var(--fundo); font-size: 16px;
+  }
+  .ficha[aria-pressed="true"] { background: var(--azul); border-color: var(--azul); color: #fff; font-weight: 600; }
+  .ficha.usada { border-color: var(--azul); }
+  .medida { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .medida > input, .grupo > input, .grupo > textarea {
+    width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--linha);
+    background: var(--fundo); outline: none;
+  }
+  .medida > input { width: 120px; flex: none; font-variant-numeric: tabular-nums; }
+  .medida > span { color: var(--suave); }
+  .grupo > textarea { resize: vertical; min-height: 64px; }
+  #dmOutro { margin-top: 8px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -145,7 +185,8 @@
     </div>
     <div class="campo">
       <label for="data">Data</label>
-      <input id="data" type="date">
+      <button class="data-botao" id="data" type="button" aria-haspopup="dialog"></button>
+      <button class="hoje" id="hoje" type="button" hidden>Hoje</button>
     </div>
   </section>
 
@@ -173,20 +214,31 @@
   <section class="cartao" id="lido" hidden>
     <h2>Implante lido</h2>
     <div id="avisos"></div>
-    <div class="campo"><span class="rotulo">GTIN</span><span class="valor" id="vGtin"></span></div>
+    <div class="grupo">
+      <span class="rotulo" id="rDm">Dispositivo médico (DM)</span>
+      <div class="fichas" id="fichasDm" role="group" aria-labelledby="rDm"></div>
+      <input id="dmOutro" autocomplete="off" placeholder="Qual? Escreve o dispositivo" hidden>
+    </div>
+    <div class="grupo">
+      <label for="diametro">Diâmetro</label>
+      <div class="medida"><input id="diametro" inputmode="decimal" autocomplete="off" placeholder="Ex: 4,0"><span>mm</span></div>
+      <div class="fichas" id="fichasDiametro"></div>
+    </div>
+    <div class="grupo">
+      <label for="tamanho" id="rTamanho">Tamanho</label>
+      <div class="medida"><input id="tamanho" inputmode="decimal" autocomplete="off" placeholder="Ex: 14"><span id="uTamanho">mm</span></div>
+      <div class="fichas" id="fichasTamanho"></div>
+    </div>
     <div class="campo"><span class="rotulo">Lote</span><span class="valor" id="vLote"></span></div>
     <div class="campo"><span class="rotulo">Validade</span><span class="valor" id="vValidade"></span></div>
-    <div class="campo">
-      <label for="tamanho">Tamanho (mm)</label>
-      <input id="tamanho" inputmode="decimal" autocomplete="off" placeholder="Ex: 14">
-    </div>
-    <div class="campo">
-      <label for="diametro">Diâmetro (mm)</label>
-      <input id="diametro" inputmode="decimal" autocomplete="off" placeholder="Ex: 4,0">
-    </div>
-    <div class="campo" id="lFabrico"><span class="rotulo">Fabrico</span><span class="valor" id="vFabrico"></span></div>
+    <div class="campo"><span class="rotulo">GTIN</span><span class="valor" id="vGtin"></span></div>
     <div class="campo" id="lSerie"><span class="rotulo">Nº de série</span><span class="valor" id="vSerie"></span></div>
-    <div class="campo" id="lOutros"><span class="rotulo">Outros</span><span class="valor" id="vOutros"></span></div>
+    <div class="campo" id="lFabrico"><span class="rotulo">Fabrico</span><span class="valor" id="vFabrico"></span></div>
+    <div class="campo" id="lOutros"><span class="rotulo">Mais dados</span><span class="valor" id="vOutros"></span></div>
+    <div class="grupo" style="border-bottom:0">
+      <label for="notas">Outros (notas)</label>
+      <textarea id="notas" rows="2" placeholder="Campo livre"></textarea>
+    </div>
     <div class="botoes">
       <button class="btn" id="descartar">Descartar</button>
       <button class="btn principal" id="guardar">Guardar na folha</button>
@@ -202,6 +254,19 @@
     </div>
   </section>
 </main>
+
+<dialog id="cal" aria-labelledby="calTitulo">
+  <div class="cal-topo">
+    <h2 id="calTitulo"></h2>
+    <button class="cal-seta" id="calAntes" type="button" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <button class="cal-seta" id="calDepois" type="button" aria-label="Mês seguinte"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
+  <div class="cal-grelha" id="calGrelha" role="grid"></div>
+  <div class="cal-rodape">
+    <button class="btn" id="calFechar" type="button">Cancelar</button>
+    <button class="btn principal" id="calHoje" type="button">Hoje</button>
+  </div>
+</dialog>
 
 <dialog id="def">
   <h2>Definições</h2>
@@ -323,14 +388,96 @@ function gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catc
 
 let def = ler("implantes.def", { url: "", chave: "", auto: false });
 let sessao = ler("implantes.sessao", { nsc: "", data: hoje(), itens: [] });
-let catalogo = ler("implantes.catalogo", {});   // medidas já escritas, por GTIN
+/* Dispositivos e medidas sugeridas. Edita à vontade: são só atalhos, o campo aceita qualquer valor.
+   As medidas que usares passam a aparecer primeiro (contorno azul). */
+const DISPOSITIVOS = [
+  { nome: "Âncora",   diametro: ["2,9", "3,5", "4,5", "5,0", "5,5"], tamanho: [] },
+  { nome: "Anilha",   diametro: [], tamanho: [] },
+  // Stryker Gamma3. Curta (trocantérica): 170, 180 e 200 mm. Longa: 240–480 mm de 20 em 20,
+  // diâmetros distais 10, 11, 13 e 15 mm. Parafuso cefálico: Ø10,5 mm, 70–130 mm de 5 em 5.
+  { nome: "Cavilha curta", diametro: ["11"], tamanho: ["170", "180", "200"] },
+  { nome: "Cavilha longa", diametro: ["10", "11", "13", "15"],
+    tamanho: ["240", "260", "280", "300", "320", "340", "360", "380", "400", "420", "440", "460", "480"] },
+  { nome: "Parafuso cefálico", diametro: ["10,5"],
+    tamanho: ["70", "75", "80", "85", "90", "95", "100", "105", "110", "115", "120", "125", "130"] },
+  { nome: "Cimento",  diametro: [], tamanho: [], semMedidas: true },
+  { nome: "Fio K",    diametro: ["1,0", "1,25", "1,6", "2,0", "2,5"], tamanho: [] },
+  { nome: "Parafuso", diametro: ["2,7", "3,5", "4,0", "4,5", "6,5"], tamanho: ["12", "14", "16", "20", "24", "30", "40", "50"] },
+  { nome: "Placa",    diametro: [], tamanho: ["4", "5", "6", "7", "8", "10"], unidadeTamanho: "furos" },
+];
+const OUTRO = "Outro";
+let catalogo = ler("implantes.catalogo", {});   // por GTIN: DM e medidas da última vez
+let usadas = ler("implantes.usadas", {});       // por DM: quantas vezes cada medida foi usada
 let pendente = null;     // leitura à espera de «Guardar»
 const dataPt = iso => iso ? iso.split("-").reverse().join("/") : "—";
 
 $("nsc").value = sessao.nsc;
-$("data").value = sessao.data || hoje();
+// A data é a do dia do registo, a não ser que a tenhas mudado no calendário.
+function acertarData() {
+  if (!sessao.dataEscolhida || !sessao.data) sessao.data = hoje();
+  $("data").innerHTML = `<span>${dataPt(sessao.data)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`;
+  $("data").setAttribute("aria-label", "Data da cirurgia: " + dataPt(sessao.data) + ". Mudar");
+  $("hoje").hidden = sessao.data === hoje();
+  gravar("implantes.sessao", sessao);
+}
+acertarData();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) acertarData(); });
+$("hoje").onclick = () => { sessao.dataEscolhida = false; acertarData(); };
 $("nsc").addEventListener("input", () => { sessao.nsc = $("nsc").value.trim(); $("campoNsc").classList.remove("falta"); gravar("implantes.sessao", sessao); });
-$("data").addEventListener("input", () => { sessao.data = $("data").value; gravar("implantes.sessao", sessao); });
+function escolherData(iso) {
+  sessao.data = iso;
+  sessao.dataEscolhida = iso !== hoje();
+  acertarData();
+}
+
+/* ---------- Calendário ---------- */
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+let calMes;      // primeiro dia do mês que está à vista
+let calFoco;     // dia com foco do teclado (AAAA-MM-DD)
+
+function abrirCalendario() {
+  const [a, m] = sessao.data.split("-").map(Number);
+  calMes = new Date(a, m - 1, 1); calFoco = sessao.data;
+  desenharCalendario(); $("cal").showModal();
+  $("calGrelha").querySelector('[tabindex="0"]')?.focus();
+}
+function desenharCalendario() {
+  $("calTitulo").textContent = `${MESES[calMes.getMonth()]} ${calMes.getFullYear()}`.replace(/^./, c => c.toUpperCase());
+  const g = $("calGrelha"); g.textContent = "";
+  for (const d of ["S", "T", "Q", "Q", "S", "S", "D"]) { const e = document.createElement("div"); e.className = "sem"; e.textContent = d; g.append(e); }
+  const inicio = new Date(calMes); inicio.setDate(1 - ((calMes.getDay() + 6) % 7));   // semana começa à segunda
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(inicio); d.setDate(inicio.getDate() + i);
+    if (i === 35 && d.getMonth() !== calMes.getMonth()) break;                         // não mostrar 6.ª linha vazia
+    const v = iso(d), b = document.createElement("button");
+    b.type = "button"; b.className = "cal-dia"; b.textContent = d.getDate(); b.dataset.d = v;
+    if (d.getMonth() !== calMes.getMonth()) b.classList.add("fora");
+    if (v === hoje()) b.classList.add("hoje-dia");
+    b.setAttribute("aria-selected", v === sessao.data ? "true" : "false");
+    b.setAttribute("aria-label", `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`);
+    b.tabIndex = v === calFoco ? 0 : -1;
+    b.onclick = () => { escolherData(v); $("cal").close(); };
+    g.append(b);
+  }
+}
+function mudarMes(n) { calMes = new Date(calMes.getFullYear(), calMes.getMonth() + n, 1); desenharCalendario(); }
+$("data").onclick = abrirCalendario;
+$("calAntes").onclick = () => mudarMes(-1);
+$("calDepois").onclick = () => mudarMes(1);
+$("calFechar").onclick = () => $("cal").close();
+$("calHoje").onclick = () => { escolherData(hoje()); $("cal").close(); };
+$("cal").addEventListener("click", e => { if (e.target === $("cal")) $("cal").close(); });   // toque fora fecha
+$("calGrelha").addEventListener("keydown", e => {
+  const passo = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+  if (!passo || !e.target.dataset.d) return;
+  e.preventDefault();
+  const [a, m, d] = e.target.dataset.d.split("-").map(Number), n = new Date(a, m - 1, d + passo);
+  calFoco = iso(n);
+  if (n.getMonth() !== calMes.getMonth() || n.getFullYear() !== calMes.getFullYear()) calMes = new Date(n.getFullYear(), n.getMonth(), 1);
+  desenharCalendario(); $("calGrelha").querySelector('[tabindex="0"]')?.focus();
+});
 
 /* ---------- Envio ---------- */
 
@@ -359,7 +506,7 @@ function guardarLeitura(l) {
   if (!sessao.data) { mostrarErro("Preenche a data da cirurgia antes de guardar."); return false; }
   mostrarErro("");
   const item = { id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2),
-    nsc: sessao.nsc, data: sessao.data, tamanho: l.tamanho || "", diametro: l.diametro || "", gtin: l.gtin, lote: l.lote, validade: l.validade, fabrico: l.fabrico,
+    nsc: sessao.nsc, data: sessao.data, dm: l.dm || "", tamanho: l.tamanho || "", diametro: l.diametro || "", notas: l.notas || "", gtin: l.gtin, lote: l.lote, validade: l.validade, fabrico: l.fabrico,
     serie: l.serie, outros: l.outros, codigo: l.codigo, estado: "a-enviar", erro: "" };
   sessao.itens.unshift(item);
   gravar("implantes.sessao", sessao);
@@ -368,9 +515,10 @@ function guardarLeitura(l) {
 }
 
 function medidas(it) {
-  if (it.diametro && it.tamanho) return `Ø${it.diametro} × ${it.tamanho} mm`;
-  if (it.diametro) return `Ø${it.diametro} mm`;
-  return it.tamanho ? `${it.tamanho} mm` : "";
+  const furos = it.dm === "Placa";
+  const t = it.tamanho ? (furos ? `${it.tamanho} furos` : `${it.tamanho} mm`) : "";
+  if (it.diametro && t) return furos ? `Ø${it.diametro} mm, ${t}` : `Ø${it.diametro} × ${t}`;
+  return it.diametro ? `Ø${it.diametro} mm` : t;
 }
 
 function desenharItens() {
@@ -382,7 +530,7 @@ function desenharItens() {
     const l1 = document.createElement("div"); l1.className = "l1"; l1.textContent = it.gtin || it.codigo;
     const l2 = document.createElement("div"); l2.className = "l2";
     l2.textContent = it.estado === "erro" ? it.erro
-      : [medidas(it), it.lote && "Lote " + it.lote, it.serie && "Série " + it.serie, it.validade && "Val. " + dataPt(it.validade)].filter(Boolean).join(", ");
+      : [it.dm, medidas(it), it.lote && "Lote " + it.lote, it.serie && "Série " + it.serie, it.validade && "Val. " + dataPt(it.validade)].filter(Boolean).join(", ");
     corpo.append(l1, l2);
     let est;
     if (it.estado === "erro") { est = document.createElement("button"); est.textContent = "Reenviar"; est.onclick = () => enviarItem(it); }
@@ -395,9 +543,9 @@ function desenharItens() {
 $("nova").onclick = () => {
   const porEnviar = sessao.itens.filter(i => i.estado !== "guardado").length;
   if (porEnviar && !confirm(`Há ${porEnviar} implante(s) que não chegaram à folha. Começar outra cirurgia e perdê-los?`)) return;
-  sessao = { nsc: "", data: hoje(), itens: [] };
+  sessao = { nsc: "", data: hoje(), dataEscolhida: false, itens: [] };
   gravar("implantes.sessao", sessao);
-  $("nsc").value = ""; $("data").value = sessao.data;
+  $("nsc").value = ""; acertarData();
   fecharLido(); desenharItens(); $("nsc").focus();
 };
 window.addEventListener("online", () => sessao.itens.filter(i => i.estado === "erro").forEach(enviarItem));
@@ -410,32 +558,93 @@ function aoLer(texto) {
   mostrarErro("");
   const l = interpretar(texto);
   sinal();
-  // O código não traz as medidas: ficam lembradas neste telemóvel por GTIN, para não as repetires.
+  // O código não traz o DM nem as medidas: ficam lembrados neste telemóvel por GTIN.
   const conhecido = l.gtin && catalogo[l.gtin];
-  l.tamanho = conhecido ? conhecido.tamanho : ""; l.diametro = conhecido ? conhecido.diametro : "";
-  if (def.auto && conhecido && !l.avisos.length) { if (guardarLeitura(l)) return; }
+  l.dm = conhecido?.dm || ""; l.tamanho = conhecido?.tamanho || ""; l.diametro = conhecido?.diametro || ""; l.notas = "";
+  if (def.auto && conhecido?.dm && !l.avisos.length) { if (guardarLeitura(l)) return; }
   pendente = l;
   const av = $("avisos"); av.textContent = "";
   for (const a of l.avisos) { const p = document.createElement("p"); p.className = "aviso ambar"; p.textContent = a; av.append(p); }
   $("vGtin").textContent = l.gtin || "—";
   $("vLote").textContent = l.lote || "—";
   $("vValidade").textContent = dataPt(l.validade);
-  $("tamanho").value = l.tamanho; $("diametro").value = l.diametro;
+  $("tamanho").value = l.tamanho; $("diametro").value = l.diametro; $("notas").value = "";
+  escolherDm(l.dm);
   $("vFabrico").textContent = dataPt(l.fabrico); $("lFabrico").hidden = !l.fabrico;
   $("vSerie").textContent = l.serie; $("lSerie").hidden = !l.serie;
   $("vOutros").textContent = l.outros || l.codigo; $("lOutros").hidden = !(l.outros || !l.gtin);
   $("lido").hidden = false;
   $("lido").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
-function fecharLido() { pendente = null; $("lido").hidden = true; }
+function fecharLido() { pendente = null; $("lido").hidden = true; mostrarErroLido(""); }
+
+/* ---------- DM e medidas ---------- */
+
+let dmEscolhido = "";
+function mostrarErroLido(msg) {
+  let p = $("erroLido");
+  if (!p) { p = document.createElement("p"); p.id = "erroLido"; p.className = "aviso vermelho"; $("avisos").after(p); }
+  p.textContent = msg; p.hidden = !msg;
+}
+function ficha(texto, ativo, usada, aoTocar) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ficha" + (usada ? " usada" : ""); b.textContent = texto;
+  if (ativo !== null) b.setAttribute("aria-pressed", ativo ? "true" : "false");
+  b.onclick = aoTocar; return b;
+}
+function infoDm(nome) { return DISPOSITIVOS.find(d => d.nome === nome); }
+function escolherDm(nome) {
+  const conhecido = !nome || nome === OUTRO || infoDm(nome);
+  dmEscolhido = conhecido ? nome : OUTRO;
+  $("dmOutro").hidden = dmEscolhido !== OUTRO;
+  if (!conhecido) $("dmOutro").value = nome; else if (dmEscolhido !== OUTRO) $("dmOutro").value = "";
+  const caixa = $("fichasDm"); caixa.textContent = "";
+  for (const n of [...DISPOSITIVOS.map(d => d.nome), OUTRO]) {
+    caixa.append(ficha(n, n === dmEscolhido, false, () => {
+      escolherDm(n); mostrarErroLido("");
+      if (n === OUTRO) $("dmOutro").focus();
+    }));
+  }
+  desenharMedidas();
+}
+function chaveDm() { return dmEscolhido === OUTRO ? ($("dmOutro").value.trim() || OUTRO) : dmEscolhido; }
+function contarUso(dm, campo, valor) {
+  if (!dm || !valor) return;
+  const u = (usadas[dm] ??= {}); const c = (u[campo] ??= {});
+  c[valor] = (c[valor] || 0) + 1;
+}
+function desenharMedidas() {
+  const d = infoDm(dmEscolhido) || {};
+  const semMedidas = !!d.semMedidas;
+  $("diametro").closest(".grupo").hidden = semMedidas;
+  $("tamanho").closest(".grupo").hidden = semMedidas;
+  $("uTamanho").textContent = d.unidadeTamanho || "mm";
+  $("rTamanho").textContent = d.unidadeTamanho === "furos" ? "Tamanho (nº de furos)" : "Tamanho";
+  for (const campo of ["diametro", "tamanho"]) {
+    const caixa = $(campo === "diametro" ? "fichasDiametro" : "fichasTamanho"); caixa.textContent = "";
+    if (!dmEscolhido) continue;
+    const contagem = usadas[chaveDm()]?.[campo] || {};
+    const maisUsadas = Object.keys(contagem).sort((x, y) => contagem[y] - contagem[x]).slice(0, 4);
+    const tipicas = (d[campo] || []).filter(v => !maisUsadas.includes(v));
+    const valores = [...maisUsadas, ...tipicas]
+      .sort((x, y) => parseFloat(x.replace(",", ".")) - parseFloat(y.replace(",", ".")));
+    for (const v of valores) {
+      caixa.append(ficha(v, null, maisUsadas.includes(v), () => { $(campo).value = v; }));
+    }
+  }
+}
+$("dmOutro").addEventListener("input", () => { mostrarErroLido(""); desenharMedidas(); });
 $("descartar").onclick = fecharLido;
 $("guardar").onclick = () => {
   if (!pendente) return;
+  const dm = dmEscolhido === OUTRO ? $("dmOutro").value.trim() : dmEscolhido;
+  if (!dm) { mostrarErroLido(dmEscolhido === OUTRO ? "Escreve qual é o dispositivo." : "Escolhe o dispositivo médico."); return; }
+  pendente.dm = dm;
   pendente.tamanho = $("tamanho").value.trim(); pendente.diametro = $("diametro").value.trim();
+  pendente.notas = $("notas").value.trim();
   if (!guardarLeitura(pendente)) return;
-  if (pendente.gtin && (pendente.tamanho || pendente.diametro)) {
-    catalogo[pendente.gtin] = { tamanho: pendente.tamanho, diametro: pendente.diametro }; gravar("implantes.catalogo", catalogo);
-  }
+  if (pendente.gtin) { catalogo[pendente.gtin] = { dm, tamanho: pendente.tamanho, diametro: pendente.diametro }; gravar("implantes.catalogo", catalogo); }
+  contarUso(dm, "diametro", pendente.diametro); contarUso(dm, "tamanho", pendente.tamanho); gravar("implantes.usadas", usadas);
   fecharLido();
 };
 
